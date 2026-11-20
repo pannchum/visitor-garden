@@ -2,8 +2,8 @@
 
 > A shared pixel garden where every visitor grows a flower. The garden changes with the seasons.
 
-**Status:** 🌱 Early development
-**Live demo:** coming soon
+**Status:** 🌱 Phase 2 done, adding more whimsy
+**Live demo:** https://visitor-garden.netlify.app
 
 ## What is this?
 
@@ -11,7 +11,7 @@ Each time someone visits, a new flower is planted in a shared garden that everyo
 
 ## How it works
 
-- Every visitor grows **one flower** in the garden.
+- Every visitor grows **one flower per day** in the garden.
 - Flowers are saved to a database along with the current **season**.
 - The page only loads the current season's flowers, so each season starts with a fresh garden.
 - Past gardens are kept and can be revisited later.
@@ -27,14 +27,14 @@ Each time someone visits, a new flower is planted in a shared garden that everyo
 
 Each season has its own color palette.
 
-## Tech stack (planned)
+## Tech stack 
 
-HTML, CSS, JavaScript (canvas), Supabase, Netlify or Vercel, and built with AI-assisted development.
+HTML, CSS, JavaScript (canvas), Supabase, Netlify, and built with AI-assisted development.
 
 ## Roadmap
 
-- [ ] Static pixel garden with animated flowers
-- [ ] Database storage and seasons
+- [x] Static pixel garden with animated flowers
+- [x] Database storage and seasons
 - [ ] Growth stages, day/night, per-season palettes
 - [ ] Past Gardens gallery and deployment
 
