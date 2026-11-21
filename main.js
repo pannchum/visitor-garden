@@ -17,6 +17,16 @@ const BUD_AFTER_HOURS = 2;
 const BLOOM_AFTER_HOURS = 5;
 const STEM_HEIGHT = { sprout: 5, bud: 10, bloom: 14 }; // taller as they grow
 
+// The 5 symbols a flower can carry. The database stores the short key on the left.
+const SYMBOLS = {
+  smile: "(˶˃ ᵕ ˂˶)",
+  heart: "♡",
+  kitty: "𐔌՞ ܸ.ˬ.ܸ՞𐦯",
+  cheer: "ꉂ(˵˃ ᗜ ˂˵)",
+  sparkle: "( ◡̀  ̫ ◡́) ✧",
+};
+const SYMBOL_KEYS = Object.keys(SYMBOLS);
+
 const canvas = document.getElementById("garden");
 canvas.width = WIDTH;
 canvas.height = HEIGHT;
@@ -66,7 +76,8 @@ async function plantTodaysFlower() {
   } catch (err) { /* storage unavailable: carry on */ }
 
   const color = palette.lilies[Math.floor(Math.random() * palette.lilies.length)];
-  const { error } = await db.from("flowers").insert({ season: season.id, color: color });
+  const symbol = SYMBOL_KEYS[Math.floor(Math.random() * SYMBOL_KEYS.length)];
+  const { error } = await db.from("flowers").insert({ season: season.id, color: color, symbol: symbol });
   if (error) throw error;
 
   try {
@@ -78,7 +89,7 @@ async function plantTodaysFlower() {
 async function loadGarden() {
   const { data, error, count } = await db
     .from("flowers")
-    .select("id, color, planted_at", { count: "exact" })
+    .select("id, color, planted_at, symbol", { count: "exact" })
     .eq("season", season.id)
     .order("id", { ascending: false })
     .limit(MAX_FLOWERS);
@@ -93,6 +104,7 @@ function layOutFlowers(rows) {
     id: row.id,
     color: row.color,
     plantedAt: new Date(row.planted_at).getTime(),
+    symbol: row.symbol,
     x: 16 + (i % COLS) * 32,
     y: FIRST_ROW_Y + Math.floor(i / COLS) * ROW_GAP,
   }));
@@ -310,6 +322,7 @@ async function start() {
       id: i + 1,
       color: palette.lilies[i % palette.lilies.length],
       planted_at: new Date(Date.now() - ages[i % 3] * HOUR).toISOString(),
+      symbol: SYMBOL_KEYS[i % SYMBOL_KEYS.length],
     }));
     total = rows.length;
   } else if (db) {
