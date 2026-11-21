@@ -22,3 +22,30 @@ canvas {
   border: 4px solid var(--frame, #7fbb67);
   image-rendering: pixelated; /* keeps the pixel art sharp when scaled up */
 }
+
+/* The little speech bubble that shows a flower's symbol. */
+#bubble {
+  position: absolute;
+  display: none;
+  transform: translate(-50%, -100%); /* sits centered above the flower */
+  padding: 6px 12px;
+  border: 2px solid var(--frame, #7fbb67);
+  border-radius: 14px;
+  background: var(--page, #fff);
+  color: var(--text, #333);
+  font-family: "Noto Sans Symbols 2", "Noto Sans", "Segoe UI Symbol", "Segoe UI", system-ui, sans-serif;
+  font-size: 1.15rem;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+#bubble::after { /* the little tail pointing down at the flower */
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--frame, #7fbb67);
+  border-bottom: 0;
+}
