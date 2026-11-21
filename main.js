@@ -3,22 +3,31 @@
 
 // ---------- 1. Setup ----------
 // The canvas is a tiny grid of "pixels"; CSS scales it up. Its height grows with the garden.
-const WIDTH = 160, HORIZON = 20, BLOOM_HEIGHT = 14;
+const WIDTH = 160, HORIZON = 20;
 const COLS = 5, MIN_ROWS = 4, FIRST_ROW_Y = 46, ROW_GAP = 24;
 const MAX_FLOWERS = 200; // the garden shows the newest 200 flowers of the season
 let HEIGHT = 122;        // recalculated once we know how many rows we need
 let rowCount = MIN_ROWS;
 let flowers = [];
 
+// Growth: how old a flower must be (in hours) to reach each stage.
+// Change these numbers to make flowers grow faster or slower.
+const HOUR = 60 * 60 * 1000;
+const BUD_AFTER_HOURS = 2;
+const BLOOM_AFTER_HOURS = 5;
+const STEM_HEIGHT = { sprout: 5, bud: 10, bloom: 14 }; // taller as they grow
+
 const canvas = document.getElementById("garden");
 canvas.width = WIDTH;
 canvas.height = HEIGHT;
 const ctx = canvas.getContext("2d");
 
-// Pick the season from today's date. To test another date, add ?date=2027-01-15
-// to the page address (test mode never plants flowers).
+// Pick the season from today's date. Test pages (they never touch the database):
+//   ?date=2027-01-15  shows another date's season
+//   ?stages           shows sprouts, buds and blooms together
 const params = new URLSearchParams(window.location.search);
-const testing = params.has("date");
+const demoStages = params.has("stages");
+const skipPlanting = params.has("date") || demoStages;
 let today = new Date(params.get("date") || Date.now());
 if (isNaN(today)) today = new Date();
 const season = getSeason(today);
@@ -67,7 +76,7 @@ async function plantTodaysFlower() {
 async function loadGarden() {
   const { data, error, count } = await db
     .from("flowers")
-    .select("id, color", { count: "exact" })
+    .select("id, color, planted_at", { count: "exact" })
     .eq("season", season.id)
     .order("id", { ascending: false })
     .limit(MAX_FLOWERS);
@@ -81,9 +90,18 @@ function layOutFlowers(rows) {
   return rows.map((row, i) => ({
     id: row.id,
     color: row.color,
+    plantedAt: new Date(row.planted_at).getTime(),
     x: 16 + (i % COLS) * 32,
     y: FIRST_ROW_Y + Math.floor(i / COLS) * ROW_GAP,
   }));
+}
+
+// How grown-up is this flower? Based on its age.
+function stageOf(flower) {
+  const age = Date.now() - flower.plantedAt;
+  if (age < BUD_AFTER_HOURS * HOUR) return "sprout";
+  if (age < BLOOM_AFTER_HOURS * HOUR) return "bud";
+  return "bloom";
 }
 
 // ---------- 3. Drawing ----------
@@ -119,6 +137,23 @@ const LEAF_SHAPE = [
   "....#####....",
 ];
 
+// Two tiny leaves on top of a sprout.
+const SPROUT_SHAPE = [
+  "##...##",
+  ".##.##.",
+  "..###..",
+];
+
+// A closed bud, colored like the flower it will become.
+const BUD_SHAPE = [
+  "..#..",
+  ".###.",
+  ".###.",
+  "#####",
+  "#####",
+  ".###.",
+];
+
 // colors maps each character in the shape to a color, e.g. { "#": "pink" }.
 function drawSprite(shape, left, top, colors) {
   const rows = shape.length, cols = shape[0].length;
@@ -136,17 +171,29 @@ function drawSprite(shape, left, top, colors) {
 }
 
 function drawLily(flower, time) {
+  const stage = stageOf(flower);
+  const height = STEM_HEIGHT[stage];
+
   // Each flower sways at its own speed and offset, both worked out from its id,
   // so the same flower always sways the same way.
   const speed = 0.0012 + (flower.id % 5) * 0.0003;
   const sway = Math.sin(time * speed + flower.id * 1.3); // between -1 and 1
 
   // The stem leans more the higher up it goes.
-  const stemX = (i) => flower.x + Math.round((sway * 2 * Math.min(i, BLOOM_HEIGHT)) / BLOOM_HEIGHT);
+  const stemX = (i) => flower.x + Math.round((sway * 2 * Math.min(i, height)) / height);
+  for (let i = 0; i <= height; i++) px(stemX(i) - 1, flower.y - i, 2, 1, palette.stem);
 
-  for (let i = 0; i <= BLOOM_HEIGHT; i++) px(stemX(i) - 1, flower.y - i, 2, 1, palette.stem);
+  if (stage === "sprout") {
+    drawSprite(SPROUT_SHAPE, stemX(height) - 3, flower.y - height - 2, { "#": palette.leaf });
+    return;
+  }
+
   drawSprite(LEAF_SHAPE, stemX(2) - 6, flower.y - 6, { "#": palette.leaf });
-  drawSprite(LILY_SHAPE, stemX(BLOOM_HEIGHT) - 8, flower.y - BLOOM_HEIGHT - 6, { "#": flower.color, y: palette.stamen });
+  if (stage === "bud") {
+    drawSprite(BUD_SHAPE, stemX(height) - 2, flower.y - height - 5, { "#": flower.color });
+  } else {
+    drawSprite(LILY_SHAPE, stemX(height) - 8, flower.y - height - 6, { "#": flower.color, y: palette.stamen });
+  }
 }
 
 function drawBackground() {
@@ -170,11 +217,20 @@ function loop(time) {
 async function start() {
   let rows = [];
   let total = 0;
-  let resting = db === null;
+  let resting = !demoStages && db === null;
 
-  if (db) {
+  if (demoStages) {
+    // Fake flowers of different ages, so you can see every stage without waiting.
+    const ages = [0, 3, 6]; // hours old: a sprout, a bud, a bloom
+    rows = Array.from({ length: 15 }, (_, i) => ({
+      id: i + 1,
+      color: palette.lilies[i % palette.lilies.length],
+      planted_at: new Date(Date.now() - ages[i % 3] * HOUR).toISOString(),
+    }));
+    total = rows.length;
+  } else if (db) {
     // Planting and loading are separate, so a failed plant doesn't hide the garden.
-    if (!testing) {
+    if (!skipPlanting) {
       try {
         await plantTodaysFlower();
       } catch (err) {
