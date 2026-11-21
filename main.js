@@ -26,9 +26,10 @@ const ctx = canvas.getContext("2d");
 //   ?date=2027-01-15  shows another date's season
 //   ?stages           shows sprouts, buds and blooms together
 //   ?hour=22          shows the sky at 10pm (try 2, 6, 12, 17.5, 18.5, 22)
+//   ?flowers=40       pretends the garden has 40 flowers (changes the butterflies)
 const params = new URLSearchParams(window.location.search);
 const demoStages = params.has("stages");
-const skipPlanting = params.has("date") || params.has("hour") || demoStages;
+const skipPlanting = params.has("date") || params.has("hour") || params.has("flowers") || demoStages;
 let today = new Date(params.get("date") || Date.now());
 if (isNaN(today)) today = new Date();
 const season = getSeason(today);
@@ -283,6 +284,7 @@ function draw(time) {
   const tod = timeOfDay(currentHour());
   drawBackground(time, tod);
   for (const flower of flowers) drawLily(flower, time);
+  drawCritters(time, tod); // butterflies by day, fireflies at night (from critters.js)
 
   // Lay the time-of-day tint over everything (soft navy at night, warm peach at dusk).
   ctx.globalAlpha = tod.alpha;
@@ -334,6 +336,7 @@ async function start() {
   HEIGHT = FIRST_ROW_Y + (rowCount - 1) * ROW_GAP + 4;
   canvas.height = HEIGHT;
   flowers = layOutFlowers(rows);
+  setupCritters(Number(params.get("flowers")) || total); // ?flowers=40 pretends the garden has 40 flowers
 
   label.textContent = resting
     ? "The garden is resting (couldn't reach the database)"
