@@ -310,6 +310,56 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
+// ---------- 6. Hover or tap a flower to see its symbol ----------
+const bubble = document.getElementById("bubble");
+let hideTimer;
+
+// The top edge of a flower in canvas pixels, depending on how grown it is.
+function flowerTop(f) {
+  const stage = stageOf(f);
+  return f.y - (stage === "bloom" ? 21 : stage === "bud" ? 15 : 7);
+}
+
+function hideBubble() {
+  bubble.style.display = "none";
+  canvas.style.cursor = "default";
+}
+
+function showBubble(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = rect.width / WIDTH;              // screen pixels per canvas pixel
+  const mx = (e.clientX - rect.left) / scale;    // pointer position in canvas pixels
+  const my = (e.clientY - rect.top) / scale;
+
+  // Find the flower under the pointer (the last match is the one drawn on top).
+  let hit = null;
+  for (const f of flowers) {
+    if (SYMBOLS[f.symbol] && Math.abs(mx - f.x) <= 9 && my >= flowerTop(f) && my <= f.y + 1) hit = f;
+  }
+
+  clearTimeout(hideTimer);
+  if (!hit) {
+    hideBubble();
+    return;
+  }
+
+  bubble.textContent = SYMBOLS[hit.symbol];
+  bubble.style.left = rect.left + window.scrollX + hit.x * scale + "px";
+  bubble.style.top = rect.top + window.scrollY + flowerTop(hit) * scale - 8 + "px";
+  bubble.style.display = "block";
+  canvas.style.cursor = "pointer";
+
+  // A finger never "leaves" like a mouse does, so touch bubbles fade out on their own.
+  if (e.pointerType === "touch") hideTimer = setTimeout(hideBubble, 2500);
+}
+
+canvas.addEventListener("pointermove", showBubble);
+canvas.addEventListener("pointerdown", showBubble);
+canvas.addEventListener("pointerleave", (e) => {
+  if (e.pointerType !== "touch") hideBubble();
+});
+window.addEventListener("scroll", hideBubble);
+
 async function start() {
   let rows = [];
   let total = 0;
