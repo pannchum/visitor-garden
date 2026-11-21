@@ -1,5 +1,5 @@
 // main.js: loads the season's flowers from the database, plants today's flower,
-// draws everything on the canvas, and animates the sway.
+// draws everything on the canvas, and animates the sway and the sky.
 
 // ---------- 1. Setup ----------
 // The canvas is a tiny grid of "pixels"; CSS scales it up. Its height grows with the garden.
@@ -22,12 +22,13 @@ canvas.width = WIDTH;
 canvas.height = HEIGHT;
 const ctx = canvas.getContext("2d");
 
-// Pick the season from today's date. Test pages (they never touch the database):
+// Pick the season from today's date. Test pages (they never plant flowers):
 //   ?date=2027-01-15  shows another date's season
 //   ?stages           shows sprouts, buds and blooms together
+//   ?hour=22          shows the sky at 10pm (try 2, 6, 12, 17.5, 18.5, 22)
 const params = new URLSearchParams(window.location.search);
 const demoStages = params.has("stages");
-const skipPlanting = params.has("date") || demoStages;
+const skipPlanting = params.has("date") || params.has("hour") || demoStages;
 let today = new Date(params.get("date") || Date.now());
 if (isNaN(today)) today = new Date();
 const season = getSeason(today);
@@ -104,7 +105,54 @@ function stageOf(flower) {
   return "bloom";
 }
 
-// ---------- 3. Drawing ----------
+// ---------- 3. Time of day ----------
+// Small color helpers: colors are handled as [red, green, blue] lists so we can blend them.
+const toRgb = (hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const css = (rgb) => "rgb(" + rgb.map(Math.round).join(",") + ")";
+const clamp01 = (n) => Math.max(0, Math.min(1, n));
+
+// The hour of the day (0 to 24) from the visitor's clock, or from ?hour= when testing.
+function currentHour() {
+  const forced = Number(params.get("hour"));
+  if (params.has("hour") && !isNaN(forced)) return ((forced % 24) + 24) % 24;
+  const d = new Date();
+  return d.getHours() + d.getMinutes() / 60;
+}
+
+// Describes the sky at a given hour by blending between "keyframes".
+// sky = sky color; tint = a color laid over the whole scene; a = how strong that tint is.
+// Night is soft: a gentle navy tint (a = 0.22) so the pastel flowers stay easy to see.
+// The times fit a place where the sun sets around 6pm and darkness comes quickly.
+function timeOfDay(hour) {
+  const night = { sky: toRgb("#4a5a8c"), tint: toRgb("#2d3a6e"), a: 0.22 };
+  const day = { sky: toRgb("#c8e8f8"), tint: [255, 255, 255], a: 0 }; // light blue
+  const frames = [
+    { h: 0, ...night },
+    { h: 5, ...night },
+    { h: 5.75, sky: toRgb("#f9c9b6"), tint: toRgb("#ffb48a"), a: 0.08 }, // sunrise
+    { h: 6.75, ...day },
+    { h: 16.75, ...day },
+    { h: 17.5, sky: toRgb("#ffb98f"), tint: toRgb("#ff9f6b"), a: 0.08 }, // sunset
+    { h: 18.25, sky: toRgb("#a98bbd"), tint: toRgb("#6f5a9e"), a: 0.15 }, // dusk
+    { h: 19, ...night },
+    { h: 24, ...night },
+  ];
+  let i = 0;
+  while (i < frames.length - 2 && hour >= frames[i + 1].h) i++;
+  const from = frames[i], to = frames[i + 1];
+  const t = clamp01((hour - from.h) / (to.h - from.h));
+  return {
+    hour: hour,
+    sky: lerp(from.sky, to.sky, t),
+    tint: lerp(from.tint, to.tint, t),
+    alpha: from.a + (to.a - from.a) * t,
+  };
+}
+
+const STARS = [[12, 5], [30, 10], [48, 4], [66, 12], [84, 6], [102, 11], [120, 4], [140, 9], [152, 14]];
+
+// ---------- 4. Drawing ----------
 // Draw one filled rectangle (a "pixel"). Everything else is built from this.
 function px(x, y, w, h, color) {
   ctx.fillStyle = color;
@@ -196,17 +244,51 @@ function drawLily(flower, time) {
   }
 }
 
-function drawBackground() {
-  px(0, 0, WIDTH, HORIZON, palette.sky);
+// The sky: its color, twinkling stars and a moon at night, a sun that crosses the sky by day.
+function drawSky(time, tod) {
+  px(0, 0, WIDTH, HORIZON, css(tod.sky));
+
+  const night = clamp01((tod.alpha - 0.12) / 0.08); // 0 in daylight, 1 at night
+  if (night > 0) {
+    STARS.forEach(([x, y], i) => {
+      ctx.globalAlpha = night * (0.6 + 0.4 * Math.sin(time * 0.002 + i * 2));
+      px(x, y, 1, 1, "#fff6d6");
+    });
+    ctx.globalAlpha = night;
+    px(128, 6, 3, 5, "#fff6e0");  // the moon
+    px(127, 7, 5, 3, "#fff6e0");
+    px(128, 8, 1, 1, "#e8dfc4");  // a little shadow on it
+    ctx.globalAlpha = 1;
+  }
+
+  // The sun rises at 5:45am and sets at 5:45pm.
+  if (tod.hour > 5.75 && tod.hour < 17.75) {
+    const progress = (tod.hour - 5.75) / 12;                    // 0 at sunrise, 1 at sunset
+    const sunX = 12 + progress * (WIDTH - 24);
+    const sunY = 15 - Math.sin(progress * Math.PI) * 9;         // rises, then sets
+    px(sunX - 1, sunY - 2, 3, 5, "#fff1b8");
+    px(sunX - 2, sunY - 1, 5, 3, "#fff1b8");
+  }
+}
+
+function drawBackground(time, tod) {
+  drawSky(time, tod);
   px(0, HORIZON, WIDTH, HEIGHT - HORIZON, palette.ground);
   // A thin line of soil under each row of flowers.
   for (let row = 0; row < rowCount; row++) px(0, FIRST_ROW_Y + row * ROW_GAP + 1, WIDTH, 1, palette.groundDark);
 }
 
-// ---------- 4. Start and animate ----------
+// ---------- 5. Start and animate ----------
 function draw(time) {
-  drawBackground();
+  const tod = timeOfDay(currentHour());
+  drawBackground(time, tod);
   for (const flower of flowers) drawLily(flower, time);
+
+  // Lay the time-of-day tint over everything (soft navy at night, warm peach at dusk).
+  ctx.globalAlpha = tod.alpha;
+  ctx.fillStyle = css(tod.tint);
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.globalAlpha = 1;
 }
 
 function loop(time) {
